@@ -1,0 +1,80 @@
+---
+title: "PA1"
+author: "alanpoon"
+date: "Tuesday, March 31, 2015"
+output: html_document
+---
+## Investigation of barbell lifts analysis
+
+### Synopsis
+
+In this analysis, machine learning algorithm is employed to the prediction of the manner the test subjects used in the exercise. This report will also cover how the model is being built and how the sample error is estimated. The prediction model will be used to predict 20 different test cases.
+
+### Getting the training data
+
+```{r}
+setwd("C:/Users/alanpoon/Desktop/coursera/Practical Machine Learning 8/machineLearningGit")
+
+if (!"trainingData.csv" %in% dir("../courseProjectData")  ) {
+
+    print("trainingData.csv is there")
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "../courseProjectData/trainingData.csv")
+
+  }
+}
+if (!"trainingData" %in% ls()) {
+    trainingData <- read.csv("../courseProjectData/trainingData.csv", sep = ",")
+}
+
+```
+
+### Getting the test data
+
+```{r}
+
+
+if (!"testData.csv" %in% dir("../courseProjectData")  ) {
+  
+    print("testData.csv is there")
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "../courseProjectData/testData.csv")
+
+  }
+}
+if (!"testData" %in% ls()) {
+    testData <- read.csv("../courseProjectData/testData.csv", sep = ",")
+}
+
+```
+### Prediction Study Design
+*Design Methodology
++Define Error Rate
+++The Type of error Rate used to evaluate the prediction is accuracy because we want to weigh false positives/negatives equally.
++Split Data into Training, Testing and validation (optional)
++On the Training set pick features- use cross-validation
++On the Training set pick prediction function- use cross validation
++If no validation - apply 1x to test set
++If validation - apply to test set and refine, apply 1x to validation
+
+
+
+### Designing the prediction model for the manner of lifting barbell
+Since there are several methods of lifting the barbell, prediction model of binary variable is not chosen. Since, there are many variables, principal component analysis may be used. Since there are more than 2 classes, generalized linear model cannot be used.
+Since, there are alot missing values in the data, decision tree may be the easiest machine learning algorithm to apply.
+
+
+### Data Preprocessing
+```{r}
+testData[is.na(testData)]<-0
+trainingData[is.na(trainingData)]<-0
+trainingData<-trainingData[1:70,]
+```
+All the NA values are replaced by 0.
+
+```{r}
+library(caret)
+   library(rattle)
+library(rpart)
+  set.seed(125)
+modfit<-train(classe~.,data=trainingData,method="rpart")
+```
+
