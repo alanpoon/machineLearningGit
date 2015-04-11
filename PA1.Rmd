@@ -2,7 +2,7 @@
 title: "PA1"
 author: "alanpoon"
 date: "Tuesday, March 31, 2015"
-output: html_document
+output: pdf_document
 ---
 ## Investigation of barbell lifts analysis
 
@@ -12,16 +12,17 @@ In this analysis, machine learning algorithm is employed to the prediction of th
 
 ### Getting the training data
 
-```{r}
+```{r warning=FALSE,message=FALSE}
 setwd("C:/Users/alanpoon/Desktop/coursera/Practical Machine Learning 8/machineLearningGit")
 
 if (!"trainingData.csv" %in% dir("../courseProjectData")  ) {
 
     print("trainingData.csv is there")
-    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "../courseProjectData/trainingData.csv")
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+                  destfile = "../courseProjectData/trainingData.csv")
 
   }
-}
+
 if (!"trainingData" %in% ls()) {
     trainingData <- read.csv("../courseProjectData/trainingData.csv", sep = ",")
 }
@@ -30,15 +31,16 @@ if (!"trainingData" %in% ls()) {
 
 ### Getting the test data
 
-```{r}
+```{r warning=FALSE,message=FALSE}
 
 
 if (!"testData.csv" %in% dir("../courseProjectData")  ) {
   
     print("testData.csv is there")
-    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "../courseProjectData/testData.csv")
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+                  destfile = "../courseProjectData/testData.csv")
 
-  }
+  
 }
 if (!"testData" %in% ls()) {
     testData <- read.csv("../courseProjectData/testData.csv", sep = ",")
@@ -63,18 +65,122 @@ Since, there are alot missing values in the data, decision tree may be the easie
 
 
 ### Data Preprocessing
-```{r}
+```{r warning=FALSE,message=FALSE}
 testData[is.na(testData)]<-0
 trainingData[is.na(trainingData)]<-0
-trainingData<-trainingData[1:70,]
+
+jf<-trainingData
+jf<-jf[,colSums(is.na(jf)) == 0]
+drops <- c("cvtd_timestamp")
+tf<-jf[,!(names(jf) %in% drops)]
 ```
 All the NA values are replaced by 0.
+The columns that contain blanks and #Div/0! are dropped.
+### DownSample the imbalanced Data
+We noted that Classe C is the minority class with 3422 records, while the Classe A is the majority class with 5580 records. We will perform down sample on the dataset to resolve the problem of imbalanced Data.
 
-```{r}
+```{r warning=FALSE,message=FALSE}
 library(caret)
+tf<-downSample(tf,as.factor(tf$classe))
+```
+
+### Create Data Partition
+We will create data partition to split the training set data into data to be used by model fitting and sample test data for validation and statistical measure for our model.
+```{r warning=FALSE,message=FALSE}
+set.seed(32323)
+folds<-createFolds(y=tf,k=5,list=FALSE,returnTrain=FALSE)
+##summary(tf[folds[[2]],])
+```
+```{r warning=FALSE,message=FALSE}
+set.seed(32323)
+inTrain<-createDataPartition(y=tf$classe,p=0.75,list=FALSE)
+trainModelData<-tf[inTrain,]
+sampleTestData<-tf[-inTrain,]
+```
+
+### Table for the predictors
+We use nearZeroVar() in caret package to remove variables that are near zero variates.
+```{r warning=FALSE,message=FALSE}
+
+nsv<-nearZeroVar(trainModelData,saveMetrics=TRUE)
+nsvToBeDrop<-nsv[nsv$nzv==TRUE,]
+drops<-row.names(nsvToBeDrop)
+yf<-trainModelData[,!(names(trainModelData) %in% drops)]
+```
+'yf' is the data frame after the near zero variables are removed.
+Next, we want to perform (PCA), Principal Component Analysis to weigh the variables.
+First, we need to remove the class variable and the user name, which is the 57th and 1st variables in the yf.
+```{r warning=FALSE,message=FALSE}
+pf<-yf[,c(-58,-59,-2)]
+
+uf<-abs(cor(pf))
+uf[upper.tri(uf)]<-0
+diag(uf)<-0
+er<-which(uf>0.8,arr.ind=T)
+```
+We obtain a list of variables having high correlation with each other.
+Next, we want to plot their correlation to spot trends with ggplot2 package.
+
+```{r warning=FALSE,message=FALSE }
+library(ggplot2)
+xName<-names(pf)[c(8)]
+yName<-names(pf)[c(5)]
+qq<- qplot(get(xName),get(yName),colour=classe,data=yf) + geom_smooth(method='lm',formula=y~x)
+
+```
+For the 8th and 5th variable, we do not see any importance of considering both 8th and 5th variables together in predicting the classe attribute.
+Next, we further reduce the number of variables if they are correlated. From 'er' table, we can accept 5th,6th,12th,22th,25th,29th,32th and 33rd variables.
+```{r warning=FALSE,message=FALSE}
+
+acceptableVar<-pf[,!apply(uf,2,function(x) any(x > 0.80)) ]
+acceptableVar1<-pf[,sapply(as.vector(row.names(uf)),function(x) match(x,row.names(uf)) %in% c(1,5,6,12,22,25,29,32,33)) ]
+data.new<-merge(acceptableVar,acceptableVar1,by='X')
+
+drops <- c("X")
+data.new<-data.new[,!(names(data.new) %in% drops)]
+### insert back the classe attribute
+data.new$classe<-yf$classe
+data.new$user_name<-yf$user_name
+```
+### Training model
+```{r warning=FALSE,message=FALSE}
+
    library(rattle)
 library(rpart)
+library(rpart.plot)
   set.seed(125)
-modfit<-train(classe~.,data=trainingData,method="rpart")
+model1<-rpart(classe ~ ., data=data.new, method="class")
+rpart.plot(model1, main="Classification Tree", extra=102, under=TRUE, faclen=0)
+
 ```
+ Predict the sample Test Data using the model in rpart
+```{r warning=FALSE,message=FALSE}
+ptraining<-predict(model1,sampleTestData,type='class')
+confusionMatrix(ptraining, sampleTestData$classe)
+```
+The cross-validation accuracy for Rpart is 80.82%
+### Training model with random Forest
+```{r warning=FALSE,message=FALSE}
+library(randomForest)
+ set.seed(125)
+model2<-randomForest(classe ~ ., data = data.new, importance = TRUE, ntrees = 10)
+#what are the important variables (via permutation)
+varImpPlot(model2, type=1)
+ptraining2 <- predict(model2, sampleTestData)
+confusionMatrix(ptraining2, sampleTestData$classe)
+
+```
+Predict the sample Test Data using the model in random Forest
+The cross-validation accuracy is 99.88%.
+
+### Applying Model to the testData
+Since randomForest accuracy is better, randomForest is selected predict the testData.
+```{r warning=FALSE,message=FALSE}
+ptest2<-predict(model2,testData)
+```
+```{r echo=FALSE,warning=FALSE,message=FALSE }
+print(ptest2)
+```
+
+
 
